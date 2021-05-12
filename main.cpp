@@ -25,7 +25,7 @@
 #include "MQTTClient.h"
 
 #define PI 3.14159265
-
+int mode =0;
 
 
 DigitalOut myled1(LED1);
@@ -69,8 +69,10 @@ volatile int message_num = 0;
 volatile int arrivedcount = 0;
 volatile bool closed = false;
 
-const char* topic1 = "Angle selection";
+/*const char* topic1 = "Angle selection";
 const char* topic2 = "Angle detection";
+*/
+const char* topic = "Mbed";
 
 int angle = 15;
 int angle_sel = 15;
@@ -107,7 +109,46 @@ void messageArrived2(MQTT::MessageData& md) {
 //     printf(payload);
 //     ++arrivedcount;
 }
+void publish_message(MQTT::Client<MQTTNetwork, Countdown>* client){
+    if(mode==1){
+        angle_sel = angle;
+    printf("angle_sel = %d\r\n", angle_sel);
 
+    message_num++;
+    MQTT::Message message;
+    char buff[100];
+    
+    sprintf(buff, "Angle Selected: %d degree", angle_sel);
+
+    message.qos = MQTT::QOS0;
+    message.retained = false;
+    message.dup = false;
+    message.payload = (void*) buff;
+    message.payloadlen = strlen(buff) + 1;
+    int rc = client->publish(topic, message);
+
+    printf("rc:  %d\r\n", rc);
+    printf("Puslish message: %s\r\n", buff);
+    }
+    if (mode==2){
+        message_num++;
+    MQTT::Message message;
+    char buff[300];
+    
+    sprintf(buff, "Angle Detected: %.2f degree, which is bigger than the selected angle: %d degree", angle_det, angle_sel);
+    
+    message.qos = MQTT::QOS0;
+    message.retained = false;
+    message.dup = false;
+    message.payload = (void*) buff;
+    message.payloadlen = strlen(buff) + 1;
+    int rc = client->publish(topic, message);
+
+    printf("rc:  %d\r\n", rc);
+    printf("Puslish message: %s\r\n", buff);
+    }
+}
+/*
 void publish_message1(MQTT::Client<MQTTNetwork, Countdown>* client1) {
 
     angle_sel = angle;
@@ -131,8 +172,6 @@ void publish_message1(MQTT::Client<MQTTNetwork, Countdown>* client1) {
 }
 
 void publish_message2(MQTT::Client<MQTTNetwork, Countdown>* client2) {
-
-
     message_num++;
     MQTT::Message message;
     char buff[300];
@@ -149,20 +188,13 @@ void publish_message2(MQTT::Client<MQTTNetwork, Countdown>* client2) {
     printf("rc:  %d\r\n", rc);
     printf("Puslish message: %s\r\n", buff);
 }
-
+*/
 void close_mqtt() {
     closed = true;
 }
 /*************************************************************************************/
 /*************************************************************************************/
 /*Above: MQTT function*/
-
-
-
-
-
-
-
 
 
 
@@ -220,13 +252,6 @@ int PredictGesture(float* output) {
 
 
 
-
-
-
-
-
-
-
 /*BELOW: display function on uLCD*/
 /*************************************************************************************/
 /*************************************************************************************/
@@ -266,14 +291,6 @@ void print_angle_detect() {
 /*Above: display function on uLCD*/
 
 
-
-
-
-
-
-
-
-
 /*BELOW: RPC and thread function*/
 /*************************************************************************************/
 /*************************************************************************************/
@@ -297,6 +314,7 @@ void Gesture_UI(Arguments *in, Reply *out) {
 
 
 void gesture_ui() {
+    mode=1;
     num = 1;
 
     /*BELOW: Machine Learning on mbed*/
@@ -372,8 +390,6 @@ void gesture_ui() {
     /*************************************************************************************/
     /*************************************************************************************/
     /*Above: Machine Learning on mbed*/
-
-    ;
     
     while (num==1) {                                                                // num 1: Gesture_UI mode
 
@@ -437,7 +453,7 @@ void Angle_Detection(Arguments *in, Reply *out) {
 
 void angle_detection() {
     
-    NetworkInterface* net = wifi;
+    /*NetworkInterface* net = wifi;
     MQTTNetwork mqttNetwork(net);
     MQTT::Client<MQTTNetwork, Countdown> client2(mqttNetwork);
 
@@ -469,8 +485,9 @@ void angle_detection() {
     if (client2.subscribe(topic2, MQTT::QOS0, messageArrived) != 0){
             printf("Fail to subscribe\r\n");
     }    
-
+*/
     //for Accelerometer
+    mode=2;
     int16_t pDataXYZ_init[3] = {0};
     int16_t pDataXYZ[3] = {0};
     double mag_A;
@@ -512,9 +529,11 @@ void angle_detection() {
         printf("angle_det = %.2f\r\n", angle_det);
         queue.call(print_angle_detect);
 
-        if (angle_det > angle_sel) {
-            mqtt_queue.call(&publish_message2, &client2);
+        /*if (angle_det > angle_sel) {
+
+            mqtt_queue.call(&publish_message, &client);
         }
+        */
         ThisThread::sleep_for(1000ms);
     }
 }
@@ -547,23 +566,24 @@ int main() {
     wifi = WiFiInterface::get_default_instance();
     if (!wifi) {
             printf("ERROR: No WiFiInterface found.\r\n");
-            //return -1;
+            return -1;
     }
+
 
     printf("\nConnecting to %s...\r\n", MBED_CONF_APP_WIFI_SSID);
     int ret = wifi->connect(MBED_CONF_APP_WIFI_SSID, MBED_CONF_APP_WIFI_PASSWORD, NSAPI_SECURITY_WPA_WPA2);
     if (ret != 0) {
             printf("\nConnection error: %d\r\n", ret);
-            //return -1;
+            return -1;
     }
-    
+
+
     NetworkInterface* net = wifi;
     MQTTNetwork mqttNetwork(net);
-    MQTT::Client<MQTTNetwork, Countdown> client1(mqttNetwork);
-
+    MQTT::Client<MQTTNetwork, Countdown> client(mqttNetwork);
 
     //TODO: revise host to your IP
-    const char* host = "192.168.3.118";
+    const char* host = "192.168.1.150";
     printf("Connecting to TCP network...\r\n");
 
     SocketAddress sockAddr;
@@ -575,7 +595,7 @@ int main() {
     int rc = mqttNetwork.connect(sockAddr);//(host, 1883);
     if (rc != 0) {
             printf("Connection error.");
-            //return -1;
+            return -1;
     }
     printf("Successfully connected!\r\n");
 
@@ -583,12 +603,12 @@ int main() {
     data.MQTTVersion = 3;
     data.clientID.cstring = "Mbed";
 
-    if ((rc = client1.connect(data)) != 0){
+    if ((rc = client.connect(data)) != 0){
             printf("Fail to connect MQTT\r\n");
     }
-    if (client1.subscribe(topic1, MQTT::QOS0, messageArrived) != 0){
+    if (client.subscribe(topic, MQTT::QOS0, messageArrived) != 0){
             printf("Fail to subscribe\r\n");
-    }    
+    }   
  
     /*************************************************************************************/
     /*************************************************************************************/
@@ -597,7 +617,7 @@ int main() {
 
     printf("Start accelerometer init\n");
     BSP_ACCELERO_Init();
-    btn.rise(mqtt_queue.event(&publish_message1, &client1));
+    btn.rise(mqtt_queue.event(&publish_message, &client));
 
     //The mbed RPC classes are now wrapped to create an RPC enabled version - see RpcClasses.h so don't add to base class
     // receive commands, and send back the responses
@@ -619,8 +639,13 @@ int main() {
         //Call the static call method on the RPC class
         RPC::call(buf, outbuf);
         printf("%s\r\n", outbuf);
-    }
+        if () {
+            while (// ){
 
+            }
+        }
+    }
+/*
     int num = 0;
     while (num != 5) {
             client1.yield(100);
@@ -645,4 +670,5 @@ int main() {
 
     mqttNetwork.disconnect();
     printf("Successfully closed!\n");
+    */
 }
