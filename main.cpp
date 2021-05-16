@@ -176,7 +176,16 @@ void close_mqtt() {
 }
 
 int main(int argc, char* argv[]) {
-
+/*                             // initial display on uLCD
+    uLCD.cls();
+    uLCD.locate(1, 2);
+    uLCD.printf("\n15\n");
+    uLCD.color(BLACK);
+    uLCD.locate(1, 4);
+    uLCD.printf("\n45\n");
+    uLCD.locate(1, 6);
+    uLCD.printf("\n60\n");
+*/
 
 //  set up mqtt//////////////////////////////////////////////////////
     wifi = WiFiInterface::get_default_instance();
@@ -281,11 +290,10 @@ void gesture_ui()
 {
   mode = 1;
   printf("mode= %d\n",mode);
+  
   uLCD.cls();
-  uLCD.printf("%d",ang);
-  // int test1 = 3;
-  // int test2 = 3;
-  // int test3 = 3;
+  uLCD.printf("ini= %d",ang);
+
   //BELOW: Machine Learning on mbed
     ////////////////////////////////////////////////////////////////////////
     // Whether we should clear the buffer next time we fetch data
@@ -388,57 +396,18 @@ void gesture_ui()
       if(gesture_index == 0){
         ang = angle[0];
         printf("ang=%d\r\n",ang);
+        uLCD.printf("\n mode =1 15\n");
       }else if(gesture_index == 1){
         ang = angle[1];
         printf("ang=%d\r\n",ang);
+        uLCD.printf("\n30\n");
       }else if(gesture_index == 2){
         ang = angle[2];
         printf("ang=%d\r\n",ang);
+        uLCD.printf("\n45\n");
       }
     }
-    if (gesture_index == 0 /*&& (test1 != 1)*/) {
-      //uLCD.cls();
-      uLCD.printf("angle: %d",angle[0]);
-      angle_select = angle[0];
-      printf("angle_select = %d\r\n", angle_select);
-      //array_index = 0;
-      /*
-      test1 = 1;
-      test2 = 0;
-      test3 = 0;
-      */
-    } else if (gesture_index == 1 /*&& (test2 != 1)*/) {
-      //uLCD.cls();
-      uLCD.printf("angle: %d",angle[1]);
-      angle_select = angle[1];
-      printf("angle_select = %d\r\n", angle_select);
-      //array_index = 1;
-      /*
-      test1 = 0;
-      test2 = 1;
-      test3 = 0;
-      */
-    } else if (gesture_index == 2 /*&& (test3 != 1)*/) {
-      //uLCD.cls();
-      uLCD.printf("angle: %d",angle[2]);
-      angle_select = angle[2];
-      printf("angle_select = %d\r\n", angle_select);
-      //array_index = 2;
-      /*
-      test1 = 0;
-      test2 = 0;
-      test3 = 1;
-      */
-    }
-    if (mode == 0) {
-      //myled1 = 0;
-      break;
-      printf("mode = 0\n");
-    }  
-
   }
-
-
 }
 void Tilt_Detection(Arguments *in, Reply *out)
 {
