@@ -21,6 +21,8 @@
 #include "MQTTmbed.h"
 #include "MQTTClient.h"
 
+#define PI 3.14159265
+
 // MQTT GLOBAL VARIABLES
 WiFiInterface *wifi;
 InterruptIn btn(USER_BUTTON);
@@ -61,6 +63,9 @@ int mode = 0;
 int angle[3] = {15, 30, 45};
 int ang = angle[0];
 int angle_select = angle[0];
+double tilt_angle_detect = 0.0;
+int over = 0;
+int16_t pDataXYZ_init[3] = {0};
 // machine learning/////////////////////////////////////////////////////////////////////////////////
 
 // Create an area of memory to use for input, output, and intermediate arrays.
@@ -110,9 +115,7 @@ int PredictGesture(float* output) {
 }
 
 void messageArrived(MQTT::MessageData& md) {
-    mode = 0;
-    printf("leave Gesture_UI mode\n");
-  /*
+
     MQTT::Message &message = md.message;
     char msg[300];
     sprintf(msg, "Message arrived: QoS%d, retained %d, dup %d, packetID %d\r\n", message.qos, message.retained, message.dup, message.id);
@@ -122,14 +125,18 @@ void messageArrived(MQTT::MessageData& md) {
     sprintf(payload, "Payload %.*s\r\n", message.payloadlen, (char*)message.payload);
     printf(payload);
     ++arrivedcount;
-  */
+    mode = 0;
+    printf("mode=0");
+    printf("Leave Gesture_UI mode, back to RPC\r\n");
 }
 
 void publish_message(MQTT::Client<MQTTNetwork, Countdown>* client) {
+  
   if (mode == 1) {
-    //mode = 0;
+    mode = 0;
+    
     printf("mode:  %d\r\n", mode);
-
+    angle_select = ang;
     printf("angle_select:  %d\r\n", angle_select);
 
     MQTT::Message message;
@@ -144,13 +151,13 @@ void publish_message(MQTT::Client<MQTTNetwork, Countdown>* client) {
     printf("rc:  %d\r\n", rc);
     printf("%s\r\n", buff);
   }
-  /*   
-  if (mode == 2 && (success_count < 10)) {
- if (angle_value < cosine[array_index]) {
+ 
+  if (mode == 2 && (over < 10)) {
+      over++;
+      message_num++;
       MQTT::Message message;
       char buff[300];
-
-      sprintf(buff, "#%d tilt angle = %.2f degree, over the selected angle: %d degree", (success_num + 1), angle_det, angle_select);
+      sprintf(buff, "over #%d, Angle Detected: %.2f degree, over the selected angle: %d degree", over, tilt_angle_detect, angle_select);
       
       message.qos = MQTT::QOS0;
       message.retained = false;
@@ -158,40 +165,27 @@ void publish_message(MQTT::Client<MQTTNetwork, Countdown>* client) {
       message.payload = (void*) buff;
       message.payloadlen = strlen(buff) + 1;
       int rc = client->publish(topic, message);
+
+      printf("rc:  %d\r\n", rc);
       printf("%s\r\n", buff);
-      success_num++;
-    }
-    
-  }*/
-  /*
-  if (success_count >= 10) { 
+  }
+  if (over >= 10) { 
     mode = 0;
-    success_count = 0;
+    over = 0;
+    printf("over>=10");
     myled2 = 0;
   }
-  */
 }
 void close_mqtt() {
     closed = true;
 }
 
 int main(int argc, char* argv[]) {
-/*                             // initial display on uLCD
-    uLCD.cls();
-    uLCD.locate(1, 2);
-    uLCD.printf("\n15\n");
-    uLCD.color(BLACK);
-    uLCD.locate(1, 4);
-    uLCD.printf("\n45\n");
-    uLCD.locate(1, 6);
-    uLCD.printf("\n60\n");
-*/
-
 //  set up mqtt//////////////////////////////////////////////////////
     wifi = WiFiInterface::get_default_instance();
     if (!wifi) {
             printf("ERROR: No WiFiInterface found.\r\n");
-            //return -1;
+            return -1;
     }
 
 
@@ -199,7 +193,7 @@ int main(int argc, char* argv[]) {
   int ret = wifi->connect(MBED_CONF_APP_WIFI_SSID, MBED_CONF_APP_WIFI_PASSWORD, NSAPI_SECURITY_WPA_WPA2);
   if (ret != 0) {
     printf("\nConnection error: %d\r\n", ret);
-    //return -1;
+    return -1;
   }
 
 
@@ -208,7 +202,7 @@ int main(int argc, char* argv[]) {
   MQTT::Client<MQTTNetwork, Countdown> client(mqttNetwork);
 
   //TODO: revise host to your IP
-  const char* host = "192.168.3.118";
+  const char* host = "192.168.15.118";
   printf("Connecting to TCP network...\r\n");
 
   SocketAddress sockAddr;
@@ -219,7 +213,7 @@ int main(int argc, char* argv[]) {
   int rc = mqttNetwork.connect(sockAddr);//(host, 1883);
   if (rc != 0) {
     printf("Connection error.");
-    //return -1;
+    return -1;
   }
   printf("Successfully connected!\r\n");
 
@@ -250,9 +244,8 @@ int main(int argc, char* argv[]) {
 
     FILE *devin = fdopen(&pc, "r");
     FILE *devout = fdopen(&pc, "w");
-
     while (true) {
-      while(1) {
+      while(mode ==0) {
         memset(buf, 0, 256);
         for (int i = 0; ; i++) {
             char recv = fgetc(devin);
@@ -265,7 +258,32 @@ int main(int argc, char* argv[]) {
         //Call the static call method on the RPC class
         RPC::call(buf, outbuf);
         printf("%s\r\n", outbuf);
-      //if (mode != 0) break;
+      }
+      while(mode==2){ 
+        int16_t pDataXYZ[3] = {0};
+        double mag_A;
+        double mag_B;
+        double cos;
+        double rad_det;
+        BSP_ACCELERO_AccGetXYZ(pDataXYZ);
+        for(int l=0; l<5; l++){
+          myled3=!myled3; // LED3 to indicate for a user to tilt the mbed
+        }  
+        //printf("Tilt angle detection: %d %d %d\r\n",pDataXYZ[0], pDataXYZ[1], pDataXYZ[2]);
+        mag_A = sqrt(pDataXYZ_init[0]*pDataXYZ_init[0] + pDataXYZ_init[1]*pDataXYZ_init[1] + pDataXYZ_init[2]*pDataXYZ_init[2]);
+        mag_B = sqrt(pDataXYZ[0]*pDataXYZ[0] + pDataXYZ[1]*pDataXYZ[1] + pDataXYZ[2]*pDataXYZ[2]);
+        cos = ((pDataXYZ_init[0]*pDataXYZ[0] + pDataXYZ_init[1]*pDataXYZ[1] + pDataXYZ_init[2]*pDataXYZ[2])/(mag_A)/(mag_B));
+        rad_det = acos(cos);
+        tilt_angle_detect = 180.0 * rad_det/PI;
+        printf("tilt_angle_detect = %.2f\r\n", tilt_angle_detect);
+        uLCD.cls();
+        uLCD.locate(1, 2);
+        uLCD.printf("\ntilt_angle_detect = %.2f\n", tilt_angle_detect);   
+
+        if (tilt_angle_detect > angle_select) {
+            mqtt_queue.call(&publish_message, &client);
+        }
+        ThisThread::sleep_for(1000ms);
       }
     }
 
@@ -274,12 +292,7 @@ int main(int argc, char* argv[]) {
 
 void Gesture_UI (Arguments *in, Reply *out) 
 {
-     for (int i=0; i<5; i++) {
-        myled1 = 1;                            // use LED1 to indicate the start of UI mode
-        ThisThread::sleep_for(100ms);
-        myled1 = 0;
-        ThisThread::sleep_for(100ms);
-    }
+    myled1=1;
 
     gesture_thread.start(callback(&gesture_queue, &EventQueue::dispatch_forever));
     gesture_queue.call(gesture_ui);
@@ -289,10 +302,10 @@ void Gesture_UI (Arguments *in, Reply *out)
 void gesture_ui() 
 {
   mode = 1;
-  printf("mode= %d\n",mode);
+  printf("mode= %d\r\n",mode);
   
-  uLCD.cls();
-  uLCD.printf("ini= %d",ang);
+  //uLCD.cls();
+  //uLCD.printf("ini=%d",ang);
 
   //BELOW: Machine Learning on mbed
     ////////////////////////////////////////////////////////////////////////
@@ -396,26 +409,42 @@ void gesture_ui()
       if(gesture_index == 0){
         ang = angle[0];
         printf("ang=%d\r\n",ang);
-        uLCD.printf("\n mode =1 15\n");
+        uLCD.locate(1, 2);
+        uLCD.printf("\n15\n");
       }else if(gesture_index == 1){
         ang = angle[1];
         printf("ang=%d\r\n",ang);
+        uLCD.locate(1, 2);
         uLCD.printf("\n30\n");
       }else if(gesture_index == 2){
         ang = angle[2];
         printf("ang=%d\r\n",ang);
+        uLCD.locate(1, 2);
         uLCD.printf("\n45\n");
       }
     }
+    if(mode==0){
+      myled1=0;
+    }
+
   }
 }
 void Tilt_Detection(Arguments *in, Reply *out)
 {
+
     tilt_detec_thread.start(callback(&tilt_detec_queue, &EventQueue::dispatch_forever));
     tilt_detec_queue.call(tilt_detection);
 }
 void tilt_detection()
 {
-  mode = 2;
-  printf("mode = 2\r\n");
+    mode = 2;
+    myled2 = 1;              // use LED2 to indicate the start of tilt mode
+    printf("tilt_detection_mode\r\n");
+
+    myled3 = 1;     // use LED3 to show this initialization process for a user to place the mbed on table
+    printf("initialize accelerometer\r\n");
+    
+    BSP_ACCELERO_AccGetXYZ(pDataXYZ_init);
+    printf("initial acceleration vector: %d, %d, %d\r\n", pDataXYZ_init[0], pDataXYZ_init[1], pDataXYZ_init[2]);
+    myled3=0;
 }
